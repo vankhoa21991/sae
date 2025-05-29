@@ -21,8 +21,8 @@ ts = load.timescale()
 
 # Réglage de l'heure d'observation
 # C'est 1h de moins en hiver par rapport à l'heure locale en FR
-Jour=2
-Mois=3
+Jour=13
+Mois=5
 Annee=2025
 Heure=0
 Minute=00
@@ -125,8 +125,10 @@ from skyfield.api import EarthSatellite
 
 import pandas as pd
 df = pd.read_csv(f"{chemin}/Satellite-avec-categorie.csv",sep=";",encoding="latin1")
-df = df.head(20)
+# df = df.head(20)
 df = df[pd.notna(df["TLE_text"])]
+
+# print(df["NORAD_number"].value_counts())
 
 ########### Partie ajout des étoiles
 
@@ -141,11 +143,14 @@ listeposYISS = []
 
 satellite_trajectories = {}
 
-for Seconde in range(0,60,5):
-    t = ts.utc(Annee, Mois, Jour, Heure, Minute, Seconde)
-    print(t.ut1_strftime())
-    ladate = "Date : "+str(Jour)+"/"+str(Mois)+"/"+str(Annee)+" à "+str(Heure)+"h"+str(Minute)+"min"+str(Seconde)+"s UTC (faire -1h en hiver en France)\n"
-    star_positions = vecteurlieuobservation.at(t).observe(liste_etoiles)
+# Loop over 24 hours, every 3 hours
+for hour_block in range(0, 1, 3):
+    for minute in range(0, 60):
+        for second in [0, 30]:  # Two times in each minute
+            t = ts.utc(Annee, Mois, Jour, hour_block, minute, second)
+            print(t.ut1_strftime())
+            ladate = f"Date : {Jour}/{Mois}/{Annee} à {hour_block}h{minute}min{second}s UTC (faire -1h en hiver en France)\n"
+            star_positions = vecteurlieuobservation.at(t).observe(liste_etoiles)
 
 # fois_observe = []
 #
@@ -163,180 +168,106 @@ for Seconde in range(0,60,5):
 
     ## Voir : https://rhodesmill.org/skyfield/earth-satellites.html
 
-    listeSATELLITESvisibles = []
-    listeNomSat = []
+            listeSATELLITESvisibles = []
+            listeNomSat = []
 
-    for numero, ligne in df.iterrows():
-        noradID = ligne["NORAD_number"]
-        Name = TLE_text = ligne["Name"]
-        TLE_text = ligne["TLE_text"]
+            for numero, ligne in df.iterrows():
+                noradID = ligne["NORAD_number"]
+                Name = TLE_text = ligne["Name"]
+                TLE_text = ligne["TLE_text"]
+                lignesTLE = TLE_text.split("/")
+                satellite = EarthSatellite(lignesTLE[1], lignesTLE[2], Name, ts)
+                difference = satellite - lieu
+                topocentric = difference.at(t)
+                alt, az, distance = topocentric.altaz()
 
-        lignesTLE = TLE_text.split("/")
+                if alt.degrees > 0:
+                    try:
+                        satellite_astrometrique = vecteurlieuobservation.at(t).observe(earth+satellite)
+                    except ValueError as e:
+                        print(f"Skipping {Name} at {t.utc_iso()} due to: {e}")
+                        continue
+                    satellite_ra, satellite_dec, distance = topocentric.radec()
+                    position_a_regarder = position_of_radec(satellite_ra.hours, satellite_dec.degrees, distance_au=distance.au)
+                    nomconstellation = d[constellation_at(position_a_regarder)]
+                    listeSATELLITESvisibles.append([Name,
+                                                    ligne["International_designation"],
+                                                    int(ligne['NORAD_number']),
+                                                    ligne['OPS_STATUS_CODE'],
+                                                    ligne['OWNER'],
+                                                    ligne['LAUNCH_DATE'],
+                                                    ligne['LAUNCH_SITE'],
+                                                    ligne['Period(minutes)'],
+                                                    ligne['Apogee(km)'],
+                                                    ligne['Perigee(km)'],
+                                                    ligne['RCS'],
+                                                    ligne['Classification'],
+                                                    ligne['Epoch'],
+                                                    ligne['1st_derivation'],
+                                                    ligne['2nd_derivative'],
+                                                    ligne['Drag'],
+                                                    ligne['Set_number'],
+                                                    ligne['Inclination(°)'],
+                                                    ligne['Right_ascension(°)'],
+                                                    ligne['Eccentricity'],
+                                                    ligne['Argument_periastre(°)'],
+                                                    ligne['Mean_anomaly(°)'],
+                                                    ligne['Revolution_number'],
+                                                    ligne['categorie'],
+                                                    satellite_astrometrique,
+                                                    satellite_ra._degrees,
+                                                    satellite_dec.degrees,
+                                                    alt.degrees,
+                                                    az.degrees,
+                                                    distance.km,
+                                                    nomconstellation])
+                    listeNomSat.append(Name)
+                    x, y = projection(listeSATELLITESvisibles[0][24])
+                    if Name not in satellite_trajectories:
+                        satellite_trajectories[Name] = {'x': [], 'y': []}
+                    satellite_trajectories[Name]['x'].append(x)
+                    satellite_trajectories[Name]['y'].append(y)
 
-        # rstrip fait un trim right (coupe à droite les espaces en trop) pour garder le nom seulement
-        satellite = EarthSatellite(lignesTLE[1], lignesTLE[2], Name, ts)
-        difference = satellite - lieu
-        topocentric = difference.at(t)
-        alt, az, distance = topocentric.altaz()
-
-        if alt.degrees > 0:
-            satellite_astrometrique = vecteurlieuobservation.at(t).observe(earth+satellite)
-            satellite_ra, satellite_dec, distance = topocentric.radec()
-
-            position_a_regarder = position_of_radec(satellite_ra.hours, satellite_dec.degrees,distance_au=distance.au)
-            nomconstellation = d[constellation_at(position_a_regarder)]
-
-            listeSATELLITESvisibles.append([Name,
-                                            int(ligne['NORAD_number']),
-                                            ligne['OWNER'],
-                                            ligne['LAUNCH_DATE'],
-                                            ligne['LAUNCH_SITE'],
-                                            ligne['Period(minutes)'],
-                                            ligne['Apogee(km)'],
-                                            ligne['Perigee(km)'],
-                                            ligne['categorie'],
-                                            satellite_astrometrique,
-                                            satellite_ra._degrees,
-                                            satellite_dec.degrees,
-                                            alt.degrees,
-                                            az.degrees,
-                                            distance.km,
-                                            nomconstellation])
-
-            listeNomSat.append(Name)
-
-            x, y = projection(listeSATELLITESvisibles[0][9])
-            if Name not in satellite_trajectories:
-                satellite_trajectories[Name] = {'x': [], 'y': []}
-            satellite_trajectories[Name]['x'].append(x)
-            satellite_trajectories[Name]['y'].append(y)
-
-
-    print(listeNomSat)
-
-    nbsatvisibles = "Nombre de satellites visibles : "+str(len(listeSATELLITESvisibles))
-    print(nbsatvisibles,"\n")
-
-    dsatvisibles = pd.DataFrame(listeSATELLITESvisibles)
-    dsatvisibles.rename(columns={0:"Name",
-                                1:"NORAD_number",
-                                2:"OWNER",
-                                3:"LAUNCH_DATE",
-                                4:"LAUNCH_SITE",
-                                5:"Period(minutes)",
-                                6:"Apogee(km)",
-                                7:"Perigee(km)",
-                                8:"categorie",
-                                9:"astrometrique",
-                                10:"RA_en_J2000(°)",
-                                11:"DEC_en_J2000(°)",
-                                12:"ALT(°)",
-                                13:"AZ(°)",
-                                14:"Distance(km)",
-                                15:"Nom_constellation"}, inplace=True)
-    del dsatvisibles["astrometrique"]
-
-    nomfichier = "carte_du_ciel_lat="+str(latOBS)+"&long="+str(longOBS)+"__"+str(Annee)+"-"+str(Mois)+"-"+str(Jour)+"_"+str(Heure)+"h"+str(Minute)+"m"+str(Seconde)+"s"
-
-    os.makedirs(f"./output/fichier", exist_ok=True)
-    # dsatvisibles.to_csv(f"./{noradID}/{nomfichier}.csv", sep=";", index=False, encoding="latin1")
-    dsatvisibles.to_csv(f"./output/fichier/{nomfichier}.csv", sep=";", index=False, encoding="latin1")
-
-    # x,y = projection(listeSATELLITESvisibles[0][9])
-    # listeposXISS.append(x)
-    # listeposYISS.append(y)
-
-
-
-#     ## Tracer des satellites
-# ax.plot(listeposXISS, listeposYISS, color='red', marker='.', label=Name)
-#
-# if listeposXISS and listeposYISS:  # make sure the lists are not empty
-#     ax.text(listeposXISS[-1], listeposYISS[-1], Name, fontsize=9, color='yellow', fontweight="bold")
-
-
-
-    # ligne = df.loc[5]
-    # noradID = ligne["NORAD_number"]
-    # Name = TLE_text = ligne["Name"]
-    # TLE_text = ligne["TLE_text"]
-
-    # lignesTLE = TLE_text.split("/")
-
-    # Vérifier si le fichier existe
-    # if not os.path.exists(f"{chemin}/{noradID}"):
-    #     # print("folder non existe")
-    #     os.mkdir(f"{chemin}/{noradID}")
-    # else:
-        # print("folder existe")
-
-        # Exécuter le programme
-
-        # rstrip fait un trim right (coupe à droite les espaces en trop) pour garder le nom seulement
-        # satellite = EarthSatellite(lignesTLE[1], lignesTLE[2], Name, ts)
-        # difference = satellite - lieu
-        # topocentric = difference.at(t)
-        # alt, az, distance = topocentric.altaz()
-
-        # if alt.degrees > 0:
-        #     satellite_astrometrique = vecteurlieuobservation.at(t).observe(earth+satellite)
-        #     satellite_ra, satellite_dec, distance = topocentric.radec()
-        #
-        #     position_a_regarder = position_of_radec(satellite_ra.hours, satellite_dec.degrees,distance_au=distance.au)
-        #     nomconstellation = d[constellation_at(position_a_regarder)]
-
-            # listeSATELLITESvisibles.append([satellite_astrometrique, int(noradID), Name, satellite_ra._degrees, satellite_dec.degrees, alt.degrees,az.degrees, distance.km, nomconstellation])
-            # listeSATELLITESvisibles.append([Name,
-            #                                 int(ligne['NORAD_number']),
-            #                                 ligne['OWNER'],
-            #                                 ligne['LAUNCH_DATE'],
-            #                                 ligne['LAUNCH_SITE'],
-            #                                 ligne['Period(minutes)'],
-            #                                 ligne['Apogee(km)'],
-            #                                 ligne['Perigee(km)'],
-            #                                 ligne['categorie'],
-            #                                 satellite_astrometrique,
-            #                                 satellite_ra._degrees,
-            #                                 satellite_dec.degrees,
-            #                                 alt.degrees,
-            #                                 az.degrees,
-            #                                 distance.km,
-            #                                 nomconstellation])
-
-
-        # nbsatvisibles = "Nombre de satellites visibles : "+str(len(listeSATELLITESvisibles))
-        # print(nbsatvisibles,"\n")
-
-        # dsatvisibles = pd.DataFrame(listeSATELLITESvisibles)
-        # del dsatvisibles[0]
-        # dsatvisibles.rename(columns={1:"NORAD_number",2:"Name",3:"RA_en_J2000(°)",4:"DEC_en_J2000(°)",5:"ALT(°)",6:"AZ(°)",7:"Distance(km)", 8:"Nom_constellation"}, inplace=True)
-        # dsatvisibles.rename(columns={0:"Name",
-        #                             1:"NORAD_number",
-        #                             2:"OWNER",
-        #                             3:"LAUNCH_DATE",
-        #                             4:"LAUNCH_SITE",
-        #                             5:"Period(minutes)",
-        #                             6:"Apogee(km)",
-        #                             7:"Perigee(km)",
-        #                             8:"categorie",
-        #                             9:"astrometrique",
-        #                             10:"RA_en_J2000(°)",
-        #                             11:"DEC_en_J2000(°)",
-        #                             12:"ALT(°)",
-        #                             13:"AZ(°)",
-        #                             14:"Distance(km)",
-        #                             15:"Nom_constellation"}, inplace=True)
-        # del dsatvisibles["astrometrique"]
-
-        # nomfichier = "carte_du_ciel_lat="+str(latOBS)+"&long="+str(longOBS)+"__"+str(Annee)+"-"+str(Mois)+"-"+str(Jour)+"_"+str(Heure)+"h"+str(Minute)+"m"+str(Seconde)+"s"
-
-        # dsatvisibles.to_csv(f"./{noradID}/{nomfichier}.csv", sep=";", index=False, encoding="latin1")
-
-        # x,y = projection(listeSATELLITESvisibles[0][9])
-        # listeposXISS.append(x)
-        # listeposYISS.append(y)
-
-    ### fin de boucle possible
+            # print(listeNomSat)
+            nbsatvisibles = "Nombre de satellites visibles : "+str(len(listeSATELLITESvisibles))
+            print(nbsatvisibles,"\n")
+            dsatvisibles = pd.DataFrame(listeSATELLITESvisibles)
+            dsatvisibles.rename(columns={0:"Name",
+                                        1:"International_designation",
+                                        2:"NORAD_number",
+                                        3:"OPS_STATUS_CODE",
+                                        4:"OWNER",
+                                        5:"LAUNCH_DATE",
+                                        6:"LAUNCH_SITE",
+                                        7:"Period(minutes)",
+                                        8:"Apogee(km)",
+                                        9:"Perigee(km)",
+                                        10:"RCS",
+                                        11:"Classification",
+                                        12:"Epoch",
+                                        13:"1st_derivation",
+                                        14:"2nd_derivative",
+                                        15:"Drag",
+                                        16:"Set_number",
+                                        17:"Inclination(°)",
+                                        18:"Right_ascension(°)",
+                                        19:"Eccentricity",
+                                        20:"Argument_periastre(°)",
+                                        21:"Mean_anomaly(°)",
+                                        22:"Revolution_number",
+                                        23:"categorie",
+                                        24:"astrometrique",
+                                        25:"RA_en_J2000(°)",
+                                        26:"DEC_en_J2000(°)",
+                                        27:"ALT(°)",
+                                        28:"AZ(°)",
+                                        29:"Distance(km)",
+                                        30:"Nom_constellation"}, inplace=True)
+            if "astrometrique" in dsatvisibles.columns:
+                del dsatvisibles["astrometrique"]
+            nomfichier = f"carte_du_ciel_lat={latOBS}&long={longOBS}__{Annee}-{Mois}-{Jour}_{hour_block}h{minute}m{second}s"
+            os.makedirs(f"./output/fichier", exist_ok=True)
+            dsatvisibles.to_csv(f"./output/fichier/{nomfichier}.csv", sep=";", index=False, encoding="latin1")
 
 ########### Partie ajout des planètes visibles
 liste_planetes = [

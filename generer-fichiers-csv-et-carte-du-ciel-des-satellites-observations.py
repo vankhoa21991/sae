@@ -1,16 +1,16 @@
 ## Générer les fichiers CSV et cartes du ciel images des satellites observations à une date donnée - exemple 8
 
 import os
-chemin = "/Users/nganle2911/Documents/2425_FRANCE/SCIENCES-DES-DONNEES/IUT-Perpignan-Carcassonne/BUT1_2425/Semestre_2/SAE/Project-statistique-astrophysique_R2-06/satellites-par-constellations/generer-fichiers-csv-et-cartes-du-ciel"
+chemin = "/home/vankhoa@median.cad/code/github/sae/data"
 os.chdir(chemin)
 
 temps = 0
 # ele_lien = f"{chemin}/45nord/{temps}h"
 ele_lien = f"{chemin}/45sud/{temps}h_+1j"
 
-os.mkdir(f"{ele_lien}/cartes")
-os.mkdir(f"{ele_lien}/fichiers")
-os.mkdir(f"{ele_lien}/gif")
+os.makedirs(f"{ele_lien}/cartes", exist_ok=True)
+os.makedirs(f"{ele_lien}/fichiers", exist_ok=True)
+os.makedirs(f"{ele_lien}/gif", exist_ok=True)
 
 from skyfield.api import load, wgs84
 
@@ -144,9 +144,9 @@ df = df[pd.notna(df["TLE_text"])]
 # fois_observe = []
 cpt = 0
 
-for Heure in range(0,1):
-    for Minute in range(0,60,1):
-        for Seconde in range(0, 60, 30):
+for Heure in range(0, 24, 3):  # Every 3 hours, for 24 hours
+    for Minute in range(0, 60, 1):
+        for Seconde in [0, 30]:  # Two times in each minute
             cpt += 1
             # print(cpt)
             t = ts.utc(Annee, Mois, Jour, Heure, Minute, Seconde)
@@ -162,11 +162,9 @@ for Heure in range(0,1):
             from skyfield.projections import build_stereographic_projection
             projection = build_stereographic_projection(center)
 
-
             star_positions = vecteurlieuobservation.at(t).observe(liste_etoiles)
 #           fois_observe.append(t.ut1_strftime())
 # print(len(fois_observe))
-
 
 ########### Partie ajout des étoiles
 
@@ -175,7 +173,6 @@ for Heure in range(0,1):
 ########### Partie exercice : ajout d'un satellite
 
 ## Voir : https://rhodesmill.org/skyfield/earth-satellites.html
-
 
             listeSATELLITESvisibles = []
             for numero,ligne in df.iterrows():
@@ -188,7 +185,7 @@ for Heure in range(0,1):
                 # rstrip fait un trim right (coupe à droite les espaces en trop) pour garder le nom seulement
                 satellite = EarthSatellite(lignesTLE[1], lignesTLE[2], Name, ts)
                 difference = satellite - lieu # vecteur entre le satellite et le lieu d'observation
-                topocentric = difference.at(t) # Calculer la position du satellite vue depuis le lieu d’observation, au moment t
+                topocentric = difference.at(t) # Calculer la position du satellite vue depuis le lieu d'observation, au moment t
                 alt, az, distance = topocentric.altaz() # calculer altitude, alzimut, distance du satellite à l'instant t
 
                 # Si l'altitude est au-dessus de l'horizon => altitule > 0° => le satellite est visible
@@ -280,8 +277,8 @@ for Heure in range(0,1):
                                         29:"Distance(km)",
                                         30:"Nom_constellation"}, inplace=True)
 
-            del dsatvisibles["astrometrique"]
-
+            if "astrometrique" in dsatvisibles.columns:
+                del dsatvisibles["astrometrique"]
 
             nomfichier = "carte_du_ciel_lat="+str(latOBS)+"&long="+str(longOBS)+"__"+str(Annee)+"-"+str(Mois)+"-"+str(Jour)+"_"+str(Heure)+"h"+str(Minute)+"m"+str(Seconde)+"s"
 

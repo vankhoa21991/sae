@@ -21,7 +21,7 @@ ts = load.timescale()
 
 # Réglage de l'heure d'observation
 # C'est 1h de moins en hiver par rapport à l'heure locale en FR
-Jour=13
+Jour=14
 Mois=5
 Annee=2025
 Heure=0
@@ -144,35 +144,22 @@ listeposYISS = []
 satellite_trajectories = {}
 
 # Loop over 24 hours, every 3 hours
-for hour_block in range(0, 1, 3):
+for hour_block in range(0, 24, 3):
     for minute in range(0, 60):
         for second in [0, 30]:  # Two times in each minute
             t = ts.utc(Annee, Mois, Jour, hour_block, minute, second)
             print(t.ut1_strftime())
             ladate = f"Date : {Jour}/{Mois}/{Annee} à {hour_block}h{minute}min{second}s UTC (faire -1h en hiver en France)\n"
             star_positions = vecteurlieuobservation.at(t).observe(liste_etoiles)
-
-# fois_observe = []
-#
-# for Minute in range(0,10,1):
-#     for Seconde in range(0,60,1):
-#         t = ts.utc(Annee, Mois, Jour, Heure, Minute, Seconde)
-#         print(t.ut1_strftime())
-#         ladate = "Date : "+str(Jour)+"/"+str(Mois)+"/"+str(Annee)+" à "+str(Heure)+"h"+str(Minute)+"min"+str(Seconde)+"s UTC (faire -1h en hiver en France)\n"
-#         star_positions = vecteurlieuobservation.at(t).observe(liste_etoiles)
-#         fois_observe.append(t.ut1_strftime())
-# print(len(fois_observe))
-
-
-    ########### Partie exercice : ajout d'un satellite
-
-    ## Voir : https://rhodesmill.org/skyfield/earth-satellites.html
-
             listeSATELLITESvisibles = []
             listeNomSat = []
 
             for numero, ligne in df.iterrows():
                 noradID = ligne["NORAD_number"]
+
+                if noradID not in [25371, 27508, 27441]:
+                    continue
+
                 Name = TLE_text = ligne["Name"]
                 TLE_text = ligne["TLE_text"]
                 lignesTLE = TLE_text.split("/")
@@ -234,7 +221,7 @@ for hour_block in range(0, 1, 3):
             dsatvisibles = pd.DataFrame(listeSATELLITESvisibles)
             dsatvisibles.rename(columns={0:"Name",
                                         1:"International_designation",
-                                        2:"NORAD_number",
+                                        2:"NORAD_number", # 25371 27508 27441
                                         3:"OPS_STATUS_CODE",
                                         4:"OWNER",
                                         5:"LAUNCH_DATE",
@@ -268,6 +255,8 @@ for hour_block in range(0, 1, 3):
             nomfichier = f"carte_du_ciel_lat={latOBS}&long={longOBS}__{Annee}-{Mois}-{Jour}_{hour_block}h{minute}m{second}s"
             os.makedirs(f"./output/fichier", exist_ok=True)
             dsatvisibles.to_csv(f"./output/fichier/{nomfichier}.csv", sep=";", index=False, encoding="latin1")
+
+
 
 ########### Partie ajout des planètes visibles
 liste_planetes = [
